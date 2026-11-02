@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { runner } from 'node-pg-migrate';
+import { connectionOptions } from '../config/database.js';
 import { env } from '../config/env.js';
 
 // Usage: migrate.js            apply every pending migration
@@ -10,14 +11,7 @@ async function main(): Promise<void> {
     const count = direction === 'down' ? Number(countText) : Number.POSITIVE_INFINITY;
     if (direction === 'down' && !(Number.isInteger(count) && count > 0)) throw new Error('Give the number of migrations to roll back.');
     await runner({
-        databaseUrl: {
-            host: env.POSTGRES_HOST,
-            port: env.POSTGRES_PORT,
-            database: env.POSTGRES_DB,
-            user: env.POSTGRES_USER,
-            password: env.POSTGRES_PASSWORD,
-            connectionTimeoutMillis: 5_000,
-        },
+        databaseUrl: connectionOptions(env),
         dir: fileURLToPath(new URL('../../database/migrations', import.meta.url)),
         migrationsTable: 'pgmigrations',
         direction,

@@ -1,4 +1,5 @@
-import { Pool, type PoolClient } from 'pg';
+import type { ConnectionOptions } from 'node:tls';
+import { type ClientConfig, Pool, type PoolClient } from 'pg';
 import type { Logger } from './logger.js';
 
 export interface DatabaseConfig {
@@ -7,20 +8,35 @@ export interface DatabaseConfig {
     POSTGRES_DB: string;
     POSTGRES_USER: string;
     POSTGRES_PASSWORD: string;
+    // false: plain TCP. Otherwise TLS with full verification; `ca` replaces the system trust store when given.
+    POSTGRES_SSL: false | { ca: string | undefined };
 }
+
+// TLS to PostgreSQL always verifies both the certificate chain and that the certificate names POSTGRES_HOST
+// (Node's default checkServerIdentity). There is deliberately no "encrypt but don't verify" mode: without
+// verification anyone on the path can present their own certificate and read everything, password exchange included.
+export function databaseTls(ssl: DatabaseConfig['POSTGRES_SSL']): false | ConnectionOptions {
+    if (!ssl) return false;
+    return { rejectUnauthorized: true, ...(ssl.ca ? { ca: ssl.ca } : {}) };
+}
+
+// The one place that turns configuration into connection settings: the app's pool and the migrator both use it.
+export const connectionOptions = (config: DatabaseConfig): ClientConfig => ({
+    host: config.POSTGRES_HOST,
+    port: config.POSTGRES_PORT,
+    database: config.POSTGRES_DB,
+    user: config.POSTGRES_USER,
+    password: config.POSTGRES_PASSWORD,
+    ssl: databaseTls(config.POSTGRES_SSL),
+    connectionTimeoutMillis: 5_000,
+});
 
 // Only entry points (server, scripts, tests) create a pool; everything else receives it as a parameter.
 export function createPool(config: DatabaseConfig, logger?: Pick<Logger, 'error'>): Pool {
     const pool = new Pool({
-        host: config.POSTGRES_HOST,
-        port: config.POSTGRES_PORT,
-        database: config.POSTGRES_DB,
-        user: config.POSTGRES_USER,
-        password: config.POSTGRES_PASSWORD,
-
+        ...connectionOptions(config),
         max: 10,
         idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 5_000,
     });
     // Handles unexpected errors from connections sitting idle in the pool.
     pool.on('error', error => {
