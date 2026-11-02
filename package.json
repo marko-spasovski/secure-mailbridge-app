@@ -39,7 +39,7 @@
   },
   "homepage": "https://github.com/rossiko22/Mailbridge#readme",
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@types/argon2": "^0.15.4",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.6",
@@ -48,7 +48,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@types/sanitize-html": "^2.16.2",
-    "playwright": "^1.64.0",
+    "playwright": "^1.64.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
