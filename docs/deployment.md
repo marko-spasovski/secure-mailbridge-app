@@ -8,7 +8,7 @@ Secrets arrive as environment variables from AWS SSM.
 
 Contents: [1 Inventory](#1-inventory) · [2 Gaps and status](#2-gaps-and-status) ·
 [3 Running it in the lab](#3-running-it-in-the-lab) · [4 Optional: least-privilege runtime role (ADR 0008)](#4-optional-least-privilege-runtime-role-adr-0008) ·
-[5 Verification report](#5-verification-report) · [6 Open issues](#6-open-issues-for-the-owner)
+[5 Verification report](#5-verification-report) · [6 Decisions](#6-decisions-and-remaining-lab-decisions)
 
 ---
 
@@ -175,7 +175,7 @@ failure gives `500` with the standard error body. No session, no provider call, 
   string), status, request ID, `userId` and the client IP (from `X-Forwarded-For`, one hop trusted).
 - Mail content, tokens and passwords are never logged. Email addresses go to the `audit_events` table, not the logs
   (verified: a register and two logins left no address or password in the log).
-- See [§6](#6-open-issues-for-the-owner) for one gap: fatal start-up errors include the error message.
+- Errors on every line (requests, start-up, shutdown) are logged as type, code and stack, never the message.
 
 ---
 
@@ -249,7 +249,7 @@ docker run -d --name mailbridge --restart unless-stopped $HARDENING \
   ```
   The "Forgot password" page still exists but sends nothing in this setup (the app logs a warning).
 - **Database locale**: create the `mailbridge` database with a UTF-8 `LC_CTYPE` (e.g. `en_US.UTF-8`, the default of
-  the official image), or case-insensitive search only folds A–Z (see [§6](#6-open-issues-for-the-owner)).
+  the official image), or case-insensitive search only folds A–Z (see [§6](#6-decisions-and-remaining-lab-decisions)).
 
 ---
 
@@ -329,7 +329,8 @@ then only stops the app's own code, not someone holding its credentials.
 
 ## 5. Verification report
 
-Run locally on 2026-11-02 against `chore/aws-lab-image`.
+Run locally on 2026-11-02 against `chore/aws-lab-image` (second run, after the start-up log redaction and the Yarn
+removal; the first run gave the same results).
 
 **Image**
 
@@ -342,68 +343,71 @@ Run locally on 2026-11-02 against `chore/aws-lab-image`.
 | User | `node` (uid 1000) |
 | Exposed | `3000/tcp` |
 | Command | `node dist/server.js`; migrate: `node dist/scripts/migrate.js` |
-| Dev tooling | not present: no npm, npx, corepack, TypeScript, Biome or tests; `@types/node` and `@types/pg` (type declarations only, pulled in by `pg`) remain |
+| Package managers / dev tooling | none: npm, npx, corepack and Yarn are removed; no TypeScript, Biome or tests. `@types/node` and `@types/pg` (type declarations only, pulled in by `pg`) remain. Removing files in a later layer hides them but does not shrink the base layer, so the size is unchanged |
 | Writable paths | none (ran with `--read-only`, no tmpfs) |
 | Memory | ~40 MiB idle |
 
-**Run against `postgres:16`** (16.15, official image, SCRAM-SHA-256 for TCP). The app user was created exactly like
-the lab's: `CREATE ROLE mailbridge LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE …; CREATE DATABASE mailbridge OWNER mailbridge;`
+**Run against `postgres:16`** (16.15, official image, SCRAM-SHA-256 for TCP, database `C.UTF-8` / `UTF8` like the
+lab's). The app user was created exactly like the lab's:
+`CREATE ROLE mailbridge LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE …; CREATE DATABASE mailbridge OWNER mailbridge;`
 (confirmed `rolsuper=f, rolcreatedb=f, rolcreaterole=f`, password stored as SCRAM), database empty (0 tables). Every
 container ran with `--read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --init`.
 
 | Step | Result |
 |---|---|
-| App on the empty database | exits 1: "Missing database table users. Run migrations before starting the server." |
+| App on the empty database | exits 1; fatal line "database unavailable; check the configuration and run the migrations", error logged as type + stack only (no message) |
 | `migrate.js` (first run) | 13 migrations applied in ~1 s, exit 0 |
-| Schema | 11 tables, all owned by `mailbridge`; `pg_trgm` 1.6 installed **by `mailbridge`** (`trusted = t`); `plpgsql` built in |
+| Schema | 11 tables, all owned by `mailbridge`; `pg_trgm` 1.6 installed **by `mailbridge`** (`trusted = t`); `plpgsql` built in; `lower('ПОШТА') = 'пошта'` is true |
 | App start | "PostgreSQL connection and schema checks successful", "server listening" |
 | `GET /healthz`, `GET /health` | 200 `{"status":"ok"}`, not logged |
 | Register/login with `X-Forwarded-Proto: https` | `Set-Cookie: __Host-session=…; Path=/; HttpOnly; Secure; SameSite=Lax`, HSTS sent |
-| Login **without** `X-Forwarded-Proto` | 200 but **no cookie**: the G3 failure mode, now blocked at start |
-| Client IP in logs | the `X-Forwarded-For` address (`10.8.0.23`), not the proxy's |
-| Cross-site `POST` (`Origin: https://evil.example`) | 415, refused |
+| Login **without** `X-Forwarded-Proto` (first run) | 200 but **no cookie**: the G3 failure mode, now blocked at start |
+| Client IP in logs (first run) | the `X-Forwarded-For` address (`10.8.0.23`), not the proxy's |
+| Cross-site `POST` (first run) | 415, refused |
 | Logs | no email address, password or cookie value |
-| `docker stop` | SIGTERM → "shutting down" → "shut down", **220 ms, exit 0** |
+| `docker stop` | SIGTERM → "shutting down" → "shut down", **~230 ms, exit 0** |
 | `migrate.js` again (same DB) | "No migrations to run!", exit 0 |
 | App restart | `/healthz` 200; the user created before the restart still signs in |
-| OAuth redirect | `GET /accounts/connect/gmail` (fake client ID, Google not contacted) → `redirect_uri=https://mail.example.test/accounts/callback/gmail`, i.e. from `PUBLIC_ORIGIN` |
-| Runtime role ([§4](#4-optional-least-privilege-runtime-role-adr-0008)) | works as described there |
+| Database gone at start-up | fatal line with `err` = `type`, `code`, `stack` only |
+| OAuth redirect (first run) | `GET /accounts/connect/gmail` (fake client ID, Google not contacted) → `redirect_uri=https://mail.example.test/accounts/callback/gmail`, i.e. from `PUBLIC_ORIGIN` |
+| Runtime role ([§4](#4-optional-least-privilege-runtime-role-adr-0008), first run) | works as described there |
 
 **Trivy** (`aquasec/trivy:0.75.0`, the version CI pins; image scanned from a `docker save` tar):
 
 - `--severity HIGH,CRITICAL --ignore-unfixed` (CI's gate): **0 findings, passes**.
-- Including unfixed: **33 findings, 10 distinct CVEs, all in Debian 12 base packages with no fix released**
-  (Debian status *will_not_fix*, *fix_deferred* or *affected*):
+- Including unfixed: **33 findings, 9 distinct CVEs, all in Debian 12 base packages with no fix released**
+  (Debian status *will_not_fix*, *fix_deferred* or *affected*). **Accepted** (owner decision, 2026-11-02):
   - CRITICAL: CVE-2023-45853 `zlib1g` (minizip, not used by Node's own zlib; Debian *will_not_fix*);
   - HIGH: CVE-2025-69720 `ncurses`; CVE-2026-16742 `libsystemd0`/`libudev1`; CVE-2026-41992 `gzip`;
     CVE-2026-53613, CVE-2026-53615, CVE-2026-78410 `util-linux` family; CVE-2026-54369 `libacl1`; CVE-2026-9538 `perl-base`.
   - **0** in npm packages, **0** secrets found in the image.
 - `trivy config` on the repository (CI's settings): Dockerfile **0 misconfigurations**.
+- **Rescan on each base image bump**: whenever the `node:…-bookworm-slim` digest in the `Dockerfile` changes (Dependabot
+  opens these), rebuild and run both scans above. Re-check the accepted list: drop CVEs that are gone, and decide
+  on any new unfixed HIGH/CRITICAL before deploying. CI's image job already fails on any fixable HIGH/CRITICAL.
 
-**Repository checks**: lint, typecheck, build, 74 unit tests pass (browser e2e not run: no frontend change); integration tests 79 pass and 1 fails. The failure
-also happens on `main` and is unrelated to this work ([§6](#6-open-issues-for-the-owner), item 1). Mutation entries
-were added for every new security check, and each is caught.
+**Repository checks**: lint, typecheck, build and 75 unit tests pass (browser e2e not run: no frontend change).
+Integration tests: 79 pass, 1 fails, and it also fails on `main`: the Cyrillic search case, against a local dev
+database created with `LC_CTYPE=C` (see §6). Mutation entries were added for every new security check, and each is caught.
 
 ---
 
-## 6. Open issues for the owner
+## 6. Decisions and remaining lab decisions
 
-1. **Search and the database locale.** The integration test "search finds word prefixes … in any language" fails on
-   `main` and on this branch against the local dev database, which was created with `LC_CTYPE=C`: there
-   `lower('ПОШТА')` stays upper-case. On `postgres:16` with the default `en_US.utf8` it works. The unmerged branch
-   `fix/unicode-search-locale` addresses it in code. Decide whether to merge that, and make sure the lab creates
-   `mailbridge` with a UTF-8 `LC_CTYPE`.
-2. **Error messages in fatal start-up logs.** The request logger drops error messages (they can quote connection
-   details), but the base logger used in `server.ts` does not, so a start-up failure prints e.g. "Missing database
-   table users…". Messages seen so far contain no secrets (pg never echoes the password), but this contradicts the
-   rule in `logger.ts`. Fix: give the base logger the same `err` serializer. Small change; not done without approval.
-3. **Runtime role (G5).** Decide whether the lab creates `mailbridge_app` ([§4](#4-optional-least-privilege-runtime-role-adr-0008)).
-   Without it the audit log is not protected against someone holding the app's database credentials.
-4. **Unfixed Debian CVEs.** 10 base-image CVEs without fixes. Options: accept and rescan each build (CI already does
-   with `--ignore-unfixed`); or later move to a smaller base (e.g. a distroless Node image), which would drop most of
-   these packages and the shell; the `HEALTHCHECK` would then have to use the exec form (`["node", "-e", …]`).
-5. **Yarn in the base image.** `node:*-bookworm-slim` ships Yarn 1 at `/opt/yarn-v1.22.22` (and `/usr/local/bin/yarn`).
-   The Dockerfile removes npm and corepack but not Yarn. Removing it is a one-line Dockerfile change; not done unasked.
+Decided by the owner on 2026-11-02:
+
+1. **Search and the database locale: no action.** The lab database is `C.UTF-8` / `UTF8`, where `lower()` folds
+   Cyrillic (verified above). The integration test fails only against a dev database created with `LC_CTYPE=C`.
+   `fix/unicode-search-locale` stays a separate branch.
+2. **Fatal start-up errors: done.** The base logger now uses the same `err` serializer as request logs (type, code,
+   stack; never the message). The trade-off: an operator no longer sees e.g. "Missing database table users" in that
+   line, only the generic text and the stack; the migrate command's own output still prints its error.
+3. **Runtime role: the lab will most likely create `mailbridge_app`**; [§4](#4-optional-least-privilege-runtime-role-adr-0008) as written.
+4. **Unfixed Debian CVEs: accepted**, rescan on each base image bump ([§5](#5-verification-report)).
+5. **Yarn: removed** from the runtime image.
+
+Left to the lab, no change now:
+
 6. **Postgres TLS needs a certificate with an IP SAN.** If `POSTGRES_SSL=true` is used with `POSTGRES_HOST=10.0.4.10`,
    the server certificate must contain `IP:10.0.4.10` (or use a DNS name for the host and put that in the certificate).
 7. **Registration is open by default.** Anyone who reaches the app through the VPN can create an account
