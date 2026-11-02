@@ -216,6 +216,20 @@ export const mutations: Mutation[] = [
         tests: [UNIT('env')],
     },
     {
+        name: 'PostgreSQL TLS stops verifying the server certificate',
+        file: 'src/config/database.ts',
+        find: 'return { rejectUnauthorized: true,',
+        replace: 'return { rejectUnauthorized: false,',
+        tests: [UNIT('database')],
+    },
+    {
+        name: 'PostgreSQL TLS setting is ignored',
+        file: 'src/config/database.ts',
+        find: '    ssl: databaseTls(config.POSTGRES_SSL),\n',
+        replace: '',
+        tests: [UNIT('database')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",

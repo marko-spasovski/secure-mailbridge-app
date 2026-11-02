@@ -34,6 +34,7 @@ test('development defaults are filled in', () => {
     assert.equal(env.TOKEN_ENCRYPTION_KEY, 'dev-secret', 'falls back to the session secret outside production');
     assert.equal(env.ALLOW_REGISTRATION, true);
     assert.equal(env.TRUST_PROXY, 0);
+    assert.equal(env.POSTGRES_SSL, false);
     assert.deepEqual([env.MICROSOFT, env.GOOGLE, env.SMTP], [undefined, undefined, undefined]);
     assert.deepEqual(loadEnv({ ...base, GMAIL_ALLOWED_EMAILS: ' A@x.com, ,b@y.com ' }).GMAIL_ALLOWED_EMAILS, ['a@x.com', 'b@y.com']);
 });
@@ -66,6 +67,17 @@ test('production refuses to run without trusting the TLS-terminating proxy', () 
     refuses({ ...production, TRUST_PROXY: '0' }, 'TRUST_PROXY');
     refuses({ ...production, TRUST_PROXY: '' }, 'TRUST_PROXY');
     assert.equal(loadEnv({ ...base, TRUST_PROXY: '0' }).TRUST_PROXY, 0, 'development may run without a proxy');
+});
+
+test('PostgreSQL TLS takes an optional PEM CA, in one line or several', () => {
+    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----';
+    assert.deepEqual(loadEnv({ ...base, POSTGRES_SSL: 'true' }).POSTGRES_SSL, { ca: undefined });
+    assert.deepEqual(loadEnv({ ...base, POSTGRES_SSL: 'true', POSTGRES_SSL_CA: pem }).POSTGRES_SSL, { ca: pem });
+    const oneLine = pem.replaceAll('\n', '\\n');
+    assert.deepEqual(loadEnv({ ...base, POSTGRES_SSL: 'true', POSTGRES_SSL_CA: oneLine }).POSTGRES_SSL, { ca: pem });
+    refuses({ ...base, POSTGRES_SSL: 'require' }, 'POSTGRES_SSL');
+    refuses({ ...base, POSTGRES_SSL_CA: pem }, 'POSTGRES_SSL_CA');
+    refuses({ ...base, POSTGRES_SSL: 'true', POSTGRES_SSL_CA: 'not a certificate' }, 'POSTGRES_SSL_CA');
 });
 
 test('inconsistent or malformed settings are refused by name, without echoing values', () => {
