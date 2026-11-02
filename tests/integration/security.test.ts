@@ -25,6 +25,9 @@ test('the health check answers and every response carries the security headers',
     assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
     assert.match(response.headers.get('x-request-id') ?? '', /^[0-9a-f-]{36}$/);
     assert.equal(response.headers.get('x-powered-by'), null);
+    const alias = await createClient(app.url).get('/healthz');
+    assert.equal(alias.status, 200);
+    assert.deepEqual(await alias.json(), { status: 'ok' });
 });
 test('pages are served with the same headers and are never cached', async () => {
     const response = await createClient(app.url).get('/index.html');
@@ -146,6 +149,9 @@ test('sending is limited per person', async () => {
 });
 
 test('every request is logged once with its request ID and path, never with secrets or query strings', async () => {
+    // Health probes first: by the time the later requests' lines are checked, theirs have been written too.
+    await createClient(app.url).get('/health');
+    await createClient(app.url).get('/healthz');
     const { client } = await register(app, 'logged@example.com', 'a-secret-password-123');
     const response = await client.get('/emails?search=private-words');
     const requestId = response.headers.get('x-request-id');
@@ -160,7 +166,10 @@ test('every request is logged once with its request ID and path, never with secr
     const everything = JSON.stringify(app.logs);
     for (const secret of ['private-words', 'a-secret-password-123', 'wrong-password-456', client.cookies.get('session') ?? 'no-cookie'])
         assert.ok(!everything.includes(secret), `the log never contains ${secret}`);
-    assert.ok(!app.logs.some(entry => (entry.req as { path?: string } | undefined)?.path === '/health'), 'health checks are not logged');
+    assert.ok(
+        !app.logs.some(entry => ['/health', '/healthz'].includes((entry.req as { path?: string } | undefined)?.path ?? '')),
+        'health checks are not logged',
+    );
 });
 
 test('static files are revalidated (cheap 304s) while API answers are never stored', async () => {

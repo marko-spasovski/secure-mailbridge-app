@@ -36,6 +36,9 @@ export function createLogger(options: { level: string; destination?: pino.Destin
     );
 }
 
+// Health probes run every few seconds; logging them would bury everything else.
+const HEALTH_PATHS = new Set(['/health', '/healthz']);
+
 // Express rewrites req.url inside mounted routers; originalUrl keeps the full path.
 const requestPath = (req: IncomingMessage) =>
     ((req as IncomingMessage & { originalUrl?: string }).originalUrl ?? req.url ?? '').split('?')[0];
@@ -58,7 +61,7 @@ export function createRequestLogger(logger: Logger) {
             res.setHeader('X-Request-ID', id);
             return id;
         },
-        autoLogging: { ignore: req => requestPath(req) === '/health' },
+        autoLogging: { ignore: req => HEALTH_PATHS.has(requestPath(req) ?? '') },
         customLogLevel: (_req, res, error) => (error || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
         customSuccessMessage: (req, res) => `${req.method} ${requestPath(req)} ${res.statusCode}`,
         customErrorMessage: (req, res) => `${req.method} ${requestPath(req)} ${res.statusCode}`,

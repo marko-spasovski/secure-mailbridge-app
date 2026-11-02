@@ -237,6 +237,13 @@ export const mutations: Mutation[] = [
         tests: [UNIT('shutdown')],
     },
     {
+        name: 'health probes flood the request log',
+        file: 'src/config/logger.ts',
+        find: "const HEALTH_PATHS = new Set(['/health', '/healthz']);",
+        replace: "const HEALTH_PATHS = new Set(['/health']);",
+        tests: [INTEGRATION('security')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",

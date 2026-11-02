@@ -126,7 +126,8 @@ export function createApp({ pool, env, logger }: AppDependencies) {
     );
     app.use('/emails', createEmailRouter({ service: emailService, requireAuth: authMiddleware.requireAuth, audit }));
 
-    app.get('/health', async (_req, res) => {
+    // Liveness plus a database round trip; never touches a session or a mail provider.
+    app.get(['/health', '/healthz'], async (_req, res) => {
         await pool.query('SELECT 1');
         res.json({ status: 'ok' });
     });

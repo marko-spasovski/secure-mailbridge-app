@@ -1102,6 +1102,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /healthz:
+    get:
+      tags: [Operations]
+      operationId: getHealthz
+      summary: Same check as /health, under the name probes and load balancers usually expect
+      description: Not logged. No session, no provider call; one `SELECT 1` on the database pool.
+      security: []
+      responses:
+        '200':
+          description: The app is running and the database answers.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     cookieAuth:
