@@ -84,6 +84,11 @@ const schema = z
         if (value.NODE_ENV !== 'production') return;
         if (!value.PUBLIC_ORIGIN?.startsWith('https://'))
             problem('PUBLIC_ORIGIN', 'Production needs PUBLIC_ORIGIN set to an https:// origin.');
+        // The app never terminates TLS itself, so in production a proxy always does. Without trusting it, every
+        // request looks like plain HTTP: express-session then silently drops the Secure session cookie (sign-in seems
+        // to work but nobody stays signed in) and throttling counts every client as the proxy's address.
+        if (value.TRUST_PROXY < 1)
+            problem('TRUST_PROXY', 'Production runs behind a TLS-terminating proxy: set TRUST_PROXY to the number of proxies (usually 1).');
         for (const name of ['SESSION_SECRET', 'TOKEN_ENCRYPTION_KEY'] as const) {
             const secret = value[name] ?? '';
             if (secret.length < 32 || secret.startsWith('REPLACE_'))

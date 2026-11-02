@@ -209,6 +209,13 @@ export const mutations: Mutation[] = [
         tests: [UNIT('env')],
     },
     {
+        name: 'production runs without trusting its TLS proxy',
+        file: 'src/config/env.ts',
+        find: 'if (value.TRUST_PROXY < 1)',
+        replace: 'if (false)',
+        tests: [UNIT('env')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",

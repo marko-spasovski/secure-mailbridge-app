@@ -17,6 +17,7 @@ const production = {
     PUBLIC_ORIGIN: 'https://mail.example.com',
     SESSION_SECRET: 's'.repeat(32),
     TOKEN_ENCRYPTION_KEY: 'k'.repeat(32),
+    TRUST_PROXY: '1',
 };
 const refuses = (source: Record<string, string>, name: string) =>
     assert.throws(
@@ -59,6 +60,12 @@ test('production refuses weak, reused or placeholder secrets and a non-HTTPS ori
     refuses({ ...production, PUBLIC_ORIGIN: 'http://mail.example.com' }, 'PUBLIC_ORIGIN');
     refuses({ ...production, PUBLIC_ORIGIN: '' }, 'PUBLIC_ORIGIN');
     refuses({ ...production, PUBLIC_ORIGIN: 'https://mail.example.com/' }, 'PUBLIC_ORIGIN');
+});
+
+test('production refuses to run without trusting the TLS-terminating proxy', () => {
+    refuses({ ...production, TRUST_PROXY: '0' }, 'TRUST_PROXY');
+    refuses({ ...production, TRUST_PROXY: '' }, 'TRUST_PROXY');
+    assert.equal(loadEnv({ ...base, TRUST_PROXY: '0' }).TRUST_PROXY, 0, 'development may run without a proxy');
 });
 
 test('inconsistent or malformed settings are refused by name, without echoing values', () => {
