@@ -237,7 +237,7 @@ docker compose --env-file .env.production -f compose.production.yaml exec app no
 - The compose file builds the image on the host. To run the image published by CI instead, set the `app` service's `image` to `ghcr.io/rossiko22/mailbridge:latest` and remove `build`.
 - [`deploy/backup.sh`](deploy/backup.sh) writes a database dump to `backups/`; keep copies off the host.
 - [`deploy/smoke-test.sh`](deploy/smoke-test.sh) is the same check CI runs against the image.
-- `GET /healthz` (or `/health`) answers 200 when the app and its database are up; the image's `HEALTHCHECK` uses it.
+- `GET /healthz` is the liveness check (the process is up; no database work, used by the image's `HEALTHCHECK`). `GET /health` is the readiness check (200 only when the database answers too).
 - [docs/deployment.md](docs/deployment.md) covers running the image behind a separate TLS proxy (the AWS lab): inventory, env vars, outbound hosts, migrations, the least-privilege database role and a verification report.
 - If someone is locked out, `node dist/scripts/reset-password.js` (run inside the app container) sets a new password from the server. It reads `RESET_USER_EMAIL` and `RESET_USER_PASSWORD` (at least 16 characters) from the environment.
 

@@ -162,11 +162,20 @@ loads only same-origin files (CSP `default-src 'self'`). Provider continuation U
 outbound `fetch` uses `redirect: 'error'` and a timeout. No package installs at start. SMTP (587/465) is only used if
 `SMTP_HOST` is set, and must stay unset in the lab.
 
-### Health endpoint
+### Health endpoints: liveness and readiness
 
-`GET /healthz` (and the older `GET /health`) → `200 {"status":"ok"}` after a `SELECT 1` on the pool; a database
-failure gives `500` with the standard error body. No session, no provider call, not logged. In
-`contracts/openapi.yaml`. The image's `HEALTHCHECK` probes `/healthz` every 30 s.
+Two different questions, two routes (both in `contracts/openapi.yaml`, neither logged, neither calls a mail provider):
+
+| Route | Question | Does | Answers | Use it for |
+|---|---|---|---|---|
+| `GET /healthz` | **Liveness**: is the process alive and serving HTTP? | nothing: it is registered before the session middleware, so it never uses a database connection, even when the request carries a session cookie | always `200 {"status":"ok"}` while the process runs | the image's `HEALTHCHECK` (every 30 s); anything that restarts the container |
+| `GET /health` | **Readiness**: can it serve real requests? | one `SELECT 1` on the pool | `200 {"status":"ok"}`, or `500` with the standard error body when the database does not answer | monitoring, and Nginx or any check that decides whether to send traffic |
+
+Why split them: a restart cannot fix a database outage, so the container's health check must not turn "database
+down" into a restart loop. And a route that anyone can call without signing in should not cost a database connection
+per request: flooding `/healthz` uses no pool connection. `/health` still does one query per request (CodeQL's
+*missing rate limiting* alert, as on `main`), so keep it off the public path: in the lab only the VPN reaches the app,
+and Nginx can rate-limit it (`limit_req`) or answer it only to the monitoring host.
 
 ### Logging
 
@@ -184,7 +193,7 @@ failure gives `500` with the standard error body. No session, no provider call, 
 | # | Gap | Severity | Status |
 |---|---|---|---|
 | G1 | Single redirect URI `/oauth/callback` did not exist | High | **Decided: no new route.** The lab registers the two existing URIs (above); the base comes from `PUBLIC_ORIGIN`. |
-| G2 | No `/healthz` | Low | **Done**: `GET /healthz` alias, contract, tests; `HEALTHCHECK` uses it. |
+| G2 | No `/healthz` | Low | **Done**: `GET /healthz` is a DB-free liveness check (`HEALTHCHECK` uses it); `/health` stays the readiness check, unchanged from `main`. Contract, tests, mutation. |
 | G3 | `TRUST_PROXY=0` behind Nginx silently drops the Secure session cookie | High | **Done**: production refuses to start with `TRUST_PROXY < 1`; test + mutation. |
 | G4 | Schema not created at start | High | **Done (procedure)**: run the one-shot migrate command before the app on every start ([§3](#3-running-it-in-the-lab)); verified idempotent. |
 | G5 | Least-privilege runtime role (ADR 0008) | Medium | **Described for the lab to decide** ([§4](#4-optional-least-privilege-runtime-role-adr-0008)); tested on PG16, no code change needed. |
@@ -234,6 +243,8 @@ docker run -d --name mailbridge --restart unless-stopped $HARDENING \
 - **User**: `node` (uid 1000, gid 1000). The application files are owned by root, so the app process cannot change its
   own code even without `--read-only`.
 - **Stop**: `docker stop` sends SIGTERM; the app finishes within 8 s and exits 0.
+- **Health**: Docker's own health status follows `/healthz` (liveness). To know whether the app can actually serve
+  users, probe `/health` (readiness, checks the database).
 - **Nginx** must, for this app: proxy to `http://<app-host>:3000`; set `X-Forwarded-Proto $scheme` (always `https`);
   set `X-Forwarded-For $proxy_add_x_forwarded_for` (the app trusts exactly one hop, so it takes the address Nginx
   appended, not anything the client sent); pass `Host`; allow request bodies of at least 800 KB (profile photos);
@@ -360,6 +371,7 @@ container ran with `--read-only --cap-drop ALL --security-opt no-new-privileges 
 | Schema | 11 tables, all owned by `mailbridge`; `pg_trgm` 1.6 installed **by `mailbridge`** (`trusted = t`); `plpgsql` built in; `lower('ПОШТА') = 'пошта'` is true |
 | App start | "PostgreSQL connection and schema checks successful", "server listening" |
 | `GET /healthz`, `GET /health` | 200 `{"status":"ok"}`, not logged |
+| Database stopped, app running (third run) | `/healthz` 200 (liveness), `/health` 500 (readiness) |
 | Register/login with `X-Forwarded-Proto: https` | `Set-Cookie: __Host-session=…; Path=/; HttpOnly; Secure; SameSite=Lax`, HSTS sent |
 | Login **without** `X-Forwarded-Proto` (first run) | 200 but **no cookie**: the G3 failure mode, now blocked at start |
 | Client IP in logs (first run) | the `X-Forwarded-For` address (`10.8.0.23`), not the proxy's |
