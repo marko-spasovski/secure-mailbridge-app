@@ -1,22 +1,67 @@
+# The build context holds only what the image needs: package files, tsconfig.json, src, public, database.
+# Everything else stays out, so a stray secret or local file can never be baked into a layer.
+
+# Version control and CI
 .git
 .github
+.gitignore
+.gitleaksignore
+.git-blame-ignore-revs
+
+# Dependencies and build output (rebuilt inside the image)
 node_modules
 dist
+
+# Environment files and secrets of any kind
 .env
 .env.*
 .env-example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+id_ecdsa*
+.aws
+.ssh
+.npmrc
+
+# Local data, backups and test output
 storage
+backups
 coverage
 test-results
 playwright-report
-tests
-documentation
 *.log
+*.bkp
+*.sql.gz
+*.dump
+
+# Tests, docs, contracts and deployment files (not used at run time)
+tests
+docs
+documentation
+contracts
+deploy
+*.md
 *.txt
 *.drawio
-*.bkp
+render.yaml
+compose*.yaml
+docker-compose*.yaml
+biome.json
+redocly.yaml
+.redocly.lint-ignore.yaml
+tsconfig.test.json
+tsconfig.public.json
+types
+
+# Editors and tools
 .idea
+.vscode
 .agents
-.aws
 .codex
-docs
+.claude
