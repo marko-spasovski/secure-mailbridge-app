@@ -33,6 +33,11 @@ const schema = z
         POSTGRES_DB: text(),
         POSTGRES_USER: text(),
         POSTGRES_PASSWORD: text(),
+        // TLS to PostgreSQL, off by default. When on, the server certificate is always fully verified.
+        POSTGRES_SSL: flag(false),
+        // Optional PEM CA bundle that signed the server certificate (a private CA). Real newlines or literal \n both work,
+        // so the value fits in one environment variable. Empty: the system's public CAs.
+        POSTGRES_SSL_CA: optionalText(),
 
         // Anyone may create an account unless this is switched off.
         ALLOW_REGISTRATION: flag(true),
@@ -68,6 +73,11 @@ const schema = z
             if (!value[`${prefix}_CLIENT_ID`] !== !value[`${prefix}_CLIENT_SECRET`])
                 problem(`${prefix}_CLIENT_ID`, `Set both ${prefix}_CLIENT_ID and ${prefix}_CLIENT_SECRET, or neither.`);
         if (value.SMTP_HOST && !value.SMTP_FROM) problem('SMTP_FROM', 'SMTP_FROM is required when SMTP_HOST is set.');
+        if (value.POSTGRES_SSL_CA !== undefined) {
+            if (!value.POSTGRES_SSL) problem('POSTGRES_SSL_CA', 'POSTGRES_SSL_CA is set but POSTGRES_SSL is not true.');
+            if (!value.POSTGRES_SSL_CA.includes('-----BEGIN CERTIFICATE-----'))
+                problem('POSTGRES_SSL_CA', 'POSTGRES_SSL_CA must be a PEM certificate (-----BEGIN CERTIFICATE-----).');
+        }
         if (value.PUBLIC_ORIGIN) {
             let origin: URL | undefined;
             try {
@@ -84,6 +94,11 @@ const schema = z
         if (value.NODE_ENV !== 'production') return;
         if (!value.PUBLIC_ORIGIN?.startsWith('https://'))
             problem('PUBLIC_ORIGIN', 'Production needs PUBLIC_ORIGIN set to an https:// origin.');
+        // The app never terminates TLS itself, so in production a proxy always does. Without trusting it, every
+        // request looks like plain HTTP: express-session then silently drops the Secure session cookie (sign-in seems
+        // to work but nobody stays signed in) and throttling counts every client as the proxy's address.
+        if (value.TRUST_PROXY < 1)
+            problem('TRUST_PROXY', 'Production runs behind a TLS-terminating proxy: set TRUST_PROXY to the number of proxies (usually 1).');
         for (const name of ['SESSION_SECRET', 'TOKEN_ENCRYPTION_KEY'] as const) {
             const secret = value[name] ?? '';
             if (secret.length < 32 || secret.startsWith('REPLACE_'))
@@ -126,6 +141,7 @@ export function loadEnv(source: NodeJS.ProcessEnv) {
         POSTGRES_DB: value.POSTGRES_DB,
         POSTGRES_USER: value.POSTGRES_USER,
         POSTGRES_PASSWORD: value.POSTGRES_PASSWORD,
+        POSTGRES_SSL: value.POSTGRES_SSL ? { ca: value.POSTGRES_SSL_CA?.replace(/\\n/g, '\n') } : (false as const),
         ALLOW_REGISTRATION: value.ALLOW_REGISTRATION,
         MICROSOFT:
             value.MICROSOFT_CLIENT_ID && value.MICROSOFT_CLIENT_SECRET

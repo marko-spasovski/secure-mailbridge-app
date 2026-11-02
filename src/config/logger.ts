@@ -30,11 +30,16 @@ export function createLogger(options: { level: string; destination?: pino.Destin
             base: { service: 'mailbridge' },
             timestamp: pino.stdTimeFunctions.isoTime,
             redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
+            // Every line, not only request lines, logs errors without their message (see serializeError).
+            serializers: { err: serializeError },
             formatters: { level: label => ({ level: label }) },
         },
         options.destination,
     );
 }
+
+// Health probes run every few seconds; logging them would bury everything else.
+const HEALTH_PATHS = new Set(['/health', '/healthz']);
 
 // Express rewrites req.url inside mounted routers; originalUrl keeps the full path.
 const requestPath = (req: IncomingMessage) =>
@@ -58,7 +63,7 @@ export function createRequestLogger(logger: Logger) {
             res.setHeader('X-Request-ID', id);
             return id;
         },
-        autoLogging: { ignore: req => requestPath(req) === '/health' },
+        autoLogging: { ignore: req => HEALTH_PATHS.has(requestPath(req) ?? '') },
         customLogLevel: (_req, res, error) => (error || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
         customSuccessMessage: (req, res) => `${req.method} ${requestPath(req)} ${res.statusCode}`,
         customErrorMessage: (req, res) => `${req.method} ${requestPath(req)} ${res.statusCode}`,

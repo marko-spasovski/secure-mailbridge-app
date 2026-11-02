@@ -41,6 +41,12 @@ export function createApp({ pool, env, logger }: AppDependencies) {
     // Only this many proxies in front of the app may tell it the client's address (X-Forwarded-For).
     if (env.TRUST_PROXY > 0) app.set('trust proxy', env.TRUST_PROXY);
     app.use(createSecurityHeaders({ production: env.NODE_ENV === 'production' }));
+    // Liveness: answers as long as the process serves HTTP. Registered before the session middleware and anything
+    // else that could reach the database, so a flood of probes costs no connection from the pool. Readiness (the
+    // database answers too) is GET /health.
+    app.get('/healthz', (_req, res) => {
+        res.json({ status: 'ok' });
+    });
     const audit = createAudit(pool);
     // Requests turned away as cross-site or throttled are kept for review.
     app.use((req, res, next) => {

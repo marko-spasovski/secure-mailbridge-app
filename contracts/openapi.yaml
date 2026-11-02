@@ -1102,6 +1102,30 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /healthz:
+    get:
+      tags: [Operations]
+      operationId: getHealthz
+      summary: Liveness check (the process serves HTTP)
+      description: |
+        Answers before any session or database work, so probing it never uses a database connection. It says nothing
+        about the database: use `/health` for readiness. The container's `HEALTHCHECK` uses this route, so a database
+        outage does not make the orchestrator restart an app that a restart cannot fix. Not logged.
+      security: []
+      responses:
+        '200':
+          description: The process is up and serving requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+
 components:
   securitySchemes:
     cookieAuth:

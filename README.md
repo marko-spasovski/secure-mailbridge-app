@@ -151,20 +151,20 @@ Notes:
 
 ## Configuration
 
-All settings are environment variables; see [.env-example](.env-example) for development and [.env.production.example](.env.production.example) for production.
+All settings are environment variables; see [.env-example](.env-example) for development, [.env.production.example](.env.production.example) for the Caddy setup and [.env.example](.env.example) for every variable with its format (used by the [AWS lab deployment](docs/deployment.md)).
 
 | Variable | Purpose |
 | --- | --- |
 | `PUBLIC_ORIGIN` | Public address of the app. Required in production, where it must be HTTPS. |
 | `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY` | Sign sessions and encrypt stored mailbox credentials. At least 32 characters each and different from each other in production. |
 | `TOKEN_ENCRYPTION_KEY_PREVIOUS` | Only while rotating the encryption key; see [the runbook](docs/runbooks/key-rotation.md). |
-| `TRUST_PROXY` | How many reverse proxies may set `X-Forwarded-For` (`1` behind Caddy). Decides the client IP used by throttling, logs and the audit trail. |
+| `TRUST_PROXY` | How many reverse proxies may set `X-Forwarded-For` / `X-Forwarded-Proto` (`1` behind Caddy or Nginx). Decides the client IP used by throttling, logs and the audit trail, and lets the Secure session cookie be set. Production requires at least `1`. |
 | `LOG_LEVEL` | `info` by default; `debug`, `warn`, `error` or `silent`. |
 | `ALLOW_REGISTRATION` | Set to `false` to stop new sign-ups. |
 | `MICROSOFT_*`, `GOOGLE_*` | OAuth app credentials. A provider without them is simply not offered. |
 | `GMAIL_ALLOWED_EMAILS` | Optional invite list for the Gmail option. |
 | `SMTP_*` | Outgoing mail for password resets. |
-| `POSTGRES_*` | Database connection. |
+| `POSTGRES_*` | Database connection. `POSTGRES_SSL=true` turns on TLS with full certificate verification; `POSTGRES_SSL_CA` takes the PEM of a private CA. |
 | `PGADMIN_*` | Local pgAdmin sign-in and port (development only). |
 
 ## Testing
@@ -207,7 +207,7 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 | API contract lint | Redocly (`recommended-strict`) over `contracts/openapi.yaml` |
 | Configuration scan | Trivy over the Dockerfile |
 | Build, scan and smoke-test the image | Builds the image, scans it with Trivy, checks it does not run as root, starts it read-only in production mode and checks `/health`, the security headers and the session cookie |
-| Publish image | On `main` and version tags only, after every job above passes: pushes `ghcr.io/rossiko22/mailbridge` with a signed build provenance attestation |
+| Publish image | Only when the repository variable `PUBLISH_IMAGE` is `true` (off by default), on `main` and version tags, after every job above passes: pushes `ghcr.io/<owner>/<repo>` with a signed build provenance attestation |
 | GitHub release | On a `v*` tag, creates a release with generated notes |
 
 Alongside it:
@@ -237,6 +237,8 @@ docker compose --env-file .env.production -f compose.production.yaml exec app no
 - The compose file builds the image on the host. To run the image published by CI instead, set the `app` service's `image` to `ghcr.io/rossiko22/mailbridge:latest` and remove `build`.
 - [`deploy/backup.sh`](deploy/backup.sh) writes a database dump to `backups/`; keep copies off the host.
 - [`deploy/smoke-test.sh`](deploy/smoke-test.sh) is the same check CI runs against the image.
+- `GET /healthz` is the liveness check (the process is up; no database work, used by the image's `HEALTHCHECK`). `GET /health` is the readiness check (200 only when the database answers too).
+- [docs/deployment.md](docs/deployment.md) covers running the image behind a separate TLS proxy (the AWS lab): inventory, env vars, outbound hosts, migrations, the least-privilege database role and a verification report.
 - If someone is locked out, `node dist/scripts/reset-password.js` (run inside the app container) sets a new password from the server. It reads `RESET_USER_EMAIL` and `RESET_USER_PASSWORD` (at least 16 characters) from the environment.
 
 ## Project layout
