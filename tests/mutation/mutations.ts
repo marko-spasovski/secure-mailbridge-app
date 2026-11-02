@@ -244,6 +244,13 @@ export const mutations: Mutation[] = [
         tests: [INTEGRATION('security')],
     },
     {
+        name: 'start-up errors are logged with their message',
+        file: 'src/config/logger.ts',
+        find: '            serializers: { err: serializeError },\n',
+        replace: '',
+        tests: [UNIT('logger')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",

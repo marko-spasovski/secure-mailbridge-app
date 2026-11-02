@@ -30,6 +30,8 @@ export function createLogger(options: { level: string; destination?: pino.Destin
             base: { service: 'mailbridge' },
             timestamp: pino.stdTimeFunctions.isoTime,
             redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
+            // Every line, not only request lines, logs errors without their message (see serializeError).
+            serializers: { err: serializeError },
             formatters: { level: label => ({ level: label }) },
         },
         options.destination,
