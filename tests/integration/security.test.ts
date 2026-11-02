@@ -25,9 +25,31 @@ test('the health check answers and every response carries the security headers',
     assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
     assert.match(response.headers.get('x-request-id') ?? '', /^[0-9a-f-]{36}$/);
     assert.equal(response.headers.get('x-powered-by'), null);
-    const alias = await createClient(app.url).get('/healthz');
-    assert.equal(alias.status, 200);
-    assert.deepEqual(await alias.json(), { status: 'ok' });
+    const liveness = await createClient(app.url).get('/healthz');
+    assert.equal(liveness.status, 200);
+    assert.deepEqual(await liveness.json(), { status: 'ok' });
+    assert.ok(liveness.headers.get('content-security-policy'), 'liveness carries the security headers too');
+});
+test('liveness (/healthz) never touches the database; readiness (/health) does', async () => {
+    const query = app.pool.query;
+    let queries = 0;
+    // Every query fails and is counted, as if the database were gone.
+    app.pool.query = (() => {
+        queries += 1;
+        return Promise.reject(new Error('database unavailable'));
+    }) as typeof app.pool.query;
+    try {
+        const client = createClient(app.url);
+        const withCookie = { Cookie: 'session=s%3Aany-session-id.signature' };
+        const liveness = await client.request('GET', '/healthz', undefined, withCookie);
+        assert.equal(liveness.status, 200, 'liveness answers without the database, even with a session cookie');
+        assert.equal(queries, 0, 'liveness ran no query');
+        const readiness = await client.get('/health');
+        assert.equal(readiness.status, 500, 'readiness reports the database outage');
+        assert.ok(queries > 0);
+    } finally {
+        app.pool.query = query;
+    }
 });
 test('pages are served with the same headers and are never cached', async () => {
     const response = await createClient(app.url).get('/index.html');

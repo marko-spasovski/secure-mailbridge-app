@@ -251,6 +251,13 @@ export const mutations: Mutation[] = [
         tests: [UNIT('logger')],
     },
     {
+        name: 'liveness probe queries the database',
+        file: 'src/app.ts',
+        find: "    app.get('/healthz', (_req, res) => {\n",
+        replace: "    app.get('/healthz', async (_req, res) => {\n        await pool.query('SELECT 1');\n",
+        tests: [INTEGRATION('security')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",

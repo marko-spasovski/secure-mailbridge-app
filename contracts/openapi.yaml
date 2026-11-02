@@ -1106,12 +1106,15 @@ paths:
     get:
       tags: [Operations]
       operationId: getHealthz
-      summary: Same check as /health, under the name probes and load balancers usually expect
-      description: Not logged. No session, no provider call; one `SELECT 1` on the database pool.
+      summary: Liveness check (the process serves HTTP)
+      description: |
+        Answers before any session or database work, so probing it never uses a database connection. It says nothing
+        about the database: use `/health` for readiness. The container's `HEALTHCHECK` uses this route, so a database
+        outage does not make the orchestrator restart an app that a restart cannot fix. Not logged.
       security: []
       responses:
         '200':
-          description: The app is running and the database answers.
+          description: The process is up and serving requests.
           content:
             application/json:
               schema:
@@ -1122,8 +1125,6 @@ paths:
                   status:
                     type: string
                     const: ok
-        '500':
-          $ref: '#/components/responses/InternalError'
 
 components:
   securitySchemes:

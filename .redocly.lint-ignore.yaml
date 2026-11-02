@@ -7,7 +7,7 @@ contracts/openapi.yaml:
     - '#/paths/~1accounts~1callback~1{provider}/get/responses'
     # Takes no input; it either answers ok or fails with a 500.
     - '#/paths/~1health/get/responses'
-    # Alias of /health: same reason.
+    # Liveness: takes no input and does no work that could fail with a 4xx.
     - '#/paths/~1healthz/get/responses'
   operation-2xx-response:
     # Browser navigation: the success response is a 302 to the provider's consent screen.
