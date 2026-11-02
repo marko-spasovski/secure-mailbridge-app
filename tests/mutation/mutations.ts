@@ -230,6 +230,13 @@ export const mutations: Mutation[] = [
         tests: [UNIT('database')],
     },
     {
+        name: 'shutdown waits forever for requests that never finish',
+        file: 'src/http/shutdown.ts',
+        find: '        server.closeAllConnections();\n',
+        replace: '',
+        tests: [UNIT('shutdown')],
+    },
+    {
         name: 'production SMTP may stay unencrypted',
         file: 'src/integrations/mailer.ts',
         find: "requireTLS: !smtp.secure && nodeEnv === 'production',",
