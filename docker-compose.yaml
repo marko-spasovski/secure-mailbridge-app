@@ -44,7 +44,7 @@ services:
   # Catches every email the app sends in development and shows it at http://localhost:8025.
   # Nothing is delivered to real inboxes.
   mailpit:
-    image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
     container_name: ${MAILPIT_CONTAINER_NAME:-mailpit}
     restart: unless-stopped
     ports:
