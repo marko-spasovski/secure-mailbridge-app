@@ -293,7 +293,9 @@ jobs:
 
   publish:
     name: Publish image
-    if: github.event_name == 'push'
+    # Off unless the repository variable PUBLISH_IMAGE is 'true' (Settings > Secrets and variables > Actions >
+    # Variables). The lab ships its image through its own registry, so a merge to main must not push to GHCR.
+    if: github.event_name == 'push' && vars.PUBLISH_IMAGE == 'true'
     needs: [verify, integration, e2e, mutation, audit, secrets, sast, workflows, contract, config-scan, image]
     runs-on: ubuntu-latest
     timeout-minutes: 15

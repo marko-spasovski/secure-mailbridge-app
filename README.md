@@ -207,7 +207,7 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 | API contract lint | Redocly (`recommended-strict`) over `contracts/openapi.yaml` |
 | Configuration scan | Trivy over the Dockerfile |
 | Build, scan and smoke-test the image | Builds the image, scans it with Trivy, checks it does not run as root, starts it read-only in production mode and checks `/health`, the security headers and the session cookie |
-| Publish image | On `main` and version tags only, after every job above passes: pushes `ghcr.io/rossiko22/mailbridge` with a signed build provenance attestation |
+| Publish image | Only when the repository variable `PUBLISH_IMAGE` is `true` (off by default), on `main` and version tags, after every job above passes: pushes `ghcr.io/<owner>/<repo>` with a signed build provenance attestation |
 | GitHub release | On a `v*` tag, creates a release with generated notes |
 
 Alongside it:
